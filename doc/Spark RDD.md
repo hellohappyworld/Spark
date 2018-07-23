@@ -281,7 +281,7 @@ val rdd3 = rdd1.cartesian(rdd2)
 
 RDD和它依赖的父RDD（s）的关系有两种不同的类型，即窄依赖（narrow dependency）和宽依赖（wide dependency）。
 
- 
+ ![](img/20180723115456.png)
 
 ### 2.4.1.    窄依赖
 
@@ -309,11 +309,11 @@ Spark速度非常快的原因之一，就是在不同操作中可以在内存中
 
 RDD通过persist方法或cache方法可以将前面的计算结果缓存，但是并不是这两个方法被调用时立即缓存，而是触发后面的action时，该RDD将会被缓存在计算节点的内存中，并供后面重用。
 
- 
+ ![](img/20180723115614.png)
 
 通过查看源码发现cache最终也是调用了persist方法，默认的存储级别都是仅在内存存储一份，Spark的存储级别还有好多种，存储级别在object StorageLevel中定义的。
 
- 
+ ![](img/20180723115702.png)
 
 缓存有可能丢失，或者存储于内存的数据由于内存不足而被删除，RDD的缓存容错机制保证了即使缓存丢失也能保证计算的正确执行。通过基于RDD的一系列转换，丢失的数据会被重算，由于RDD的各个Partition是相对独立的，因此只需要计算丢失的部分即可，并不需要重算全部Partition。
 
@@ -323,6 +323,6 @@ RDD通过persist方法或cache方法可以将前面的计算结果缓存，但�
 
 DAG(Directed AcyclicGraph)叫做有向无环图，原始的RDD通过一系列的转换就就形成了DAG，根据RDD之间的依赖关系的不同将DAG划分成不同的Stage，对于窄依赖，partition的转换处理在Stage中完成计算。对于宽依赖，由于有Shuffle的存在，只能在parent RDD处理完成后，才能开始接下来的计算，因此宽依赖是划分Stage的依据。
 
- 
+ ![](img/20180723115744.png)
 
  
