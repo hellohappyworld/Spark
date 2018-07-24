@@ -144,13 +144,13 @@ personDF.groupBy("age").count().show()
 
 personDF.registerTempTable("t_person")
 
- 
+ ![](img/20180724165841.png)
 
 //查询年龄最大的前两名
 
 sqlContext.sql("select* from t_person order by age desc limit 2").show
 
- 
+ ![](img/20180724165919.png)
 
  
 
@@ -168,11 +168,101 @@ sqlContext.sql("desct_person").show
 
  
 
- 
+ <**dependency**>
+
+​    <**groupId**>org.apache.spark</**groupId**>
+
+​    <**artifactId**>spark-sql_2.10</**artifactId**>
+
+​    <**version**>1.6.1</**version**>
+
+</**dependency**>
+
+
+
+
 
 ### 3.1.1.  通过反射推断Schema
 
 创建一个object为com.qf.spark.sql.InferringSchema
+
+```
+package com.qf.spark.sql
+
+
+
+import org.apache.spark.{SparkConf, SparkContext}
+
+import org.apache.spark.sql.SQLContext
+
+
+
+object InferringSchema {
+
+  def main(args: Array[String]) {
+
+
+
+    //创建SparkConf()并设置App名称
+
+    val conf = new SparkConf().setAppName("SQL-1")
+
+    //SQLContext要依赖SparkContext
+
+    val sc = new SparkContext(conf)
+
+    //创建SQLContext
+
+    val sqlContext = new SQLContext(sc)
+
+
+
+    //从指定的地址创建RDD
+
+    val lineRDD = sc.textFile(args(0)).map(_.split(" "))
+
+
+
+    //创建case class
+
+    //将RDD和case class关联
+
+    val personRDD = lineRDD.map(x => Person(x(0).toInt, x(1), x(2).toInt))
+
+    //导入隐式转换，如果不到人无法将RDD转换成DataFrame
+
+    //将RDD转换成DataFrame
+
+    import sqlContext.implicits._
+
+    val personDF = personRDD.toDF
+
+    //注册表
+
+    personDF.registerTempTable("t_person")
+
+    //传入SQL
+
+    val df = sqlContext.sql("select * from t_person order by age desc limit 2")
+
+    //将结果以JSON的方式存储到指定位置
+
+    df.write.json(args(1))
+
+    //停止Spark Context
+
+    sc.stop()
+
+  }
+
+}
+
+//case class一定要放到外面
+
+case class Person(id: Int, name: String, age: Int)
+```
+
+
 
 将程序打成jar包，上传到spark集群，提交Spark任务
 
@@ -202,6 +292,86 @@ hdfs dfs -cat  hdfs://node01:9000/out/part-r-*
 
 创建一个object为com.qf.spark.sql.SpecifyingSchema
 
+```
+package com.qf.spark.sql
+
+
+
+import org.apache.spark.sql.{Row, SQLContext}
+
+import org.apache.spark.sql.types._
+
+import org.apache.spark.{SparkContext, SparkConf}
+
+
+
+object SpecifyingSchema {
+
+  def main(args: Array[String]) {
+
+    //创建SparkConf()并设置App名称
+
+    val conf = new SparkConf().setAppName("SQL-2")
+
+    //SQLContext要依赖SparkContext
+
+    val sc = new SparkContext(conf)
+
+    //创建SQLContext
+
+    val sqlContext = new SQLContext(sc)
+
+    //从指定的地址创建RDD
+
+    val personRDD = sc.textFile(args(0)).map(_.split(" "))
+
+    //通过StructType直接指定每个字段的schema
+
+    val schema = StructType(
+
+      List(
+
+        StructField("id", IntegerType, true),
+
+        StructField("name", StringType, true),
+
+        StructField("age", IntegerType, true)
+
+      )
+
+    )
+
+    //将RDD映射到rowRDD
+
+    val rowRDD = personRDD.map(p => Row(p(0).toInt, p(1).trim, p(2).toInt))
+
+    //将schema信息应用到rowRDD上
+
+    val personDataFrame = sqlContext.createDataFrame(rowRDD, schema)
+
+    //注册表
+
+    personDataFrame.registerTempTable("t_person")
+
+    //执行SQL
+
+    val df = sqlContext.sql("select * from t_person order by age desc limit 4")
+
+    //将结果以JSON的方式存储到指定位置
+
+    df.write.json(args(1))
+
+    //停止Spark Context
+
+    sc.stop()
+
+  }
+
+}
+```
+
+
+
 将程序打成jar包，上传到spark集群，提交Spark任务
 
 /usr/local/spark-1.6.1-bin-hadoop2.6/bin/spark-submit\
@@ -221,6 +391,8 @@ hdfs://node01:9000/out1
 查看结果
 
 hdfs dfs -cat  hdfs://node01:9000/out1/part-r-*
+
+![](img/20180724170216.png)
 
  
 
@@ -254,13 +426,53 @@ val jdbcDF =sqlContext.read.format("jdbc").options(Map("url" ->"jdbc:mysql://nod
 
 jdbcDF.show()
 
- 
+ ![](img/20180724170306.png)
 
 ### 4.1.2.  将数据写入到MySQL中（打jar包方式）
 
 1.编写Spark SQL程序
 
  
+
+```
+package com.qf.spark.sql
+
+import java.util.Properties
+import org.apache.spark.sql.{SQLContext, Row}
+import org.apache.spark.sql.types.{StringType, IntegerType, StructField, StructType}
+import org.apache.spark.{SparkConf, SparkContext}
+
+object JdbcRDD {
+  def main(args: Array[String]) {
+    val conf = new SparkConf().setAppName("MySQL-Demo")
+    val sc = new SparkContext(conf)
+    val sqlContext = new SQLContext(sc)
+    //通过并行化创建RDD
+    val personRDD = sc.parallelize(Array("1 tom 5", "2 jerry 3", "3 kitty 6")).map(_.split(" "))
+    //通过StructType直接指定每个字段的schema
+    val schema = StructType(
+      List(
+        StructField("id", IntegerType, true),
+        StructField("name", StringType, true),
+        StructField("age", IntegerType, true)
+      )
+    )
+    //将RDD映射到rowRDD
+    val rowRDD = personRDD.map(p => Row(p(0).toInt, p(1).trim, p(2).toInt))
+    //将schema信息应用到rowRDD上
+    val personDataFrame = sqlContext.createDataFrame(rowRDD, schema)
+    //创建Properties存储数据库相关属性
+    val prop = new Properties()
+    prop.put("user", "root")
+    prop.put("password", "123456")
+    //将数据追加到数据库
+    personDataFrame.write.mode("append").jdbc("jdbc:mysql://192.168.10.1:3306/bigdata", "bigdata.person", prop)
+    //停止SparkContext
+    sc.stop()
+  }
+}
+
+```
 
 2.用maven将程序打包
 
